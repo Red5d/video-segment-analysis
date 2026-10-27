@@ -1,0 +1,93 @@
+# vsa configuration — all keys optional; defaults shown.
+# Load order: built-in defaults → this file (--config) → env VSA__<SECTION>__<KEY> → CLI flags.
+# API keys are NEVER stored here: only the *names* of env vars appear below.
+
+source:
+  type: auto                    # auto | local | youtube
+  cookiefile: null              # Netscape cookies.txt for gated streams
+  video_format: "bv*[height<=1080]+ba/b"   # yt-dlp format for the full download
+
+paths:
+  workdir: ./out                # output root; CLI --out overrides
+
+audio:
+  sample_rate: 16000            # fixed for Qwen3-ASR / whisper-style APIs
+  channels: 1
+  format: wav
+
+vad:
+  engine: ffmpeg                # ffmpeg (silencedetect) | silero (future)
+  noise_db: -35                 # silence threshold; raise (-30) for noisy rooms,
+                                # lower (-40) for quiet recordings
+  min_silence_duration: 2.0     # seconds of quiet that count as silence
+
+segmentation:
+  min_silence_gap: 45.0         # silence this long ends a segment (talk boundary)
+  min_segment_duration: 120.0   # speech runs shorter than this are dropped
+  pad_start: 3.0                # padding added before each segment
+  pad_end: 5.0                  # padding added after each segment
+  merge_speech_gap: 2.0         # gaps inside a segment merged when shorter
+
+cut:
+  strategy: auto                # auto | local-copy | local-encode | yt-sections
+                                # auto: local files → copy; YouTube → full
+                                # download once + local copy cuts
+
+asr:
+  backend: qwen_local           # qwen_local | openai_compat | fake
+  # --- qwen_local (local GPU, lazy torch import) ---
+  model: "Qwen/Qwen3-ASR-1.7B"
+  device: cuda:0
+  dtype: bfloat16               # bfloat16 | float16 | float32
+  aligner: "Qwen/Qwen3-ForcedAligner-0.6B"   # null disables word timestamps
+  aligner_device: null          # defaults to `device`
+  language: null                # e.g. "en"; null = auto-detect
+  max_new_tokens: 1024
+  max_inference_batch_size: 8
+  attn_implementation: sdpa     # sdpa | flash_attention_2 | eager
+  # --- chunking (all backends; segments split near silence midpoints) ---
+  chunk_target_seconds: 120.0
+  max_chunk_seconds: 280.0
+  # --- openai_compat (vLLM / faster-whisper-server / hosted) ---
+  openai_base_url: "http://localhost:8000/v1"
+  openai_model: whisper-1
+  openai_api_key_env: VSA_ASR_API_KEY   # env var NAME, not the key
+  # --- shared request behavior ---
+  concurrency: 1                # per-segment request parallelism (openai_compat)
+  retries: 2
+  retry_backoff: [2, 8, 30]
+  request_timeout: 600
+
+subtitles:
+  formats: [srt, vtt]
+  max_cue_duration: 10.0
+  max_cue_chars: 42
+  max_cue_gap: 1.5
+
+slides:
+  sample_fps: 1.0               # decode rate for change detection (cheap gray)
+  analyze_width: 320            # analysis downscale width
+  pixel_diff_threshold: 28      # per-pixel change threshold (0-255 gray)
+  change_ratio: 0.5             # fraction of changed pixels = slide change
+  min_change_interval: 3.0      # minimum seconds between detected changes
+  stable_frames: 2              # frames the new slide must stay stable
+  frame_offset: 1.5             # cue start offset (change detected after it)
+  max_frames_per_segment: 200   # cap on VLM-described frames per segment
+  crop: null                    # "x,y,w,h" full-res crop (logo removal)
+
+vlm:
+  backend: openai_compat        # openai_compat | fake
+  model: gpt-4o
+  base_url: "https://api.openai.com/v1"   # any OpenAI-compatible vision endpoint
+  api_key_env: VSA_VLM_API_KEY  # env var NAME, not the key
+  image_format: jpeg
+  image_quality: 85
+  prompt_file: null             # custom slide-description prompt
+  concurrency: 2
+  retries: 3
+  retry_backoff: [2, 8, 30]
+  request_timeout: 120
+
+logging:
+  level: INFO
+  file: null                    # optional log file path

@@ -1,0 +1,42 @@
+[project]
+name = "video-segment-analysis"
+version = "0.1.0"
+description = "Split long conference recordings into per-talk segments, transcribe them, and describe slide changes."
+readme = "README.md"
+authors = [
+    { name = "Red5d", email = "daniel.colson99@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "openai>=1.40",
+    "opencv-python-headless>=4.9",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+    "qwen-asr>=0.0.1",
+    "rich>=13.0",
+    "tenacity>=8.2",
+    "typer>=0.12",
+    "yt-dlp>=2025.1",
+]
+
+[project.scripts]
+vsa = "video_segment_analysis.cli:app"
+
+[tool.pytest.ini_options]
+markers = [
+    "network: tests that require network access (excluded by default)",
+]
+addopts = "-m 'not network'"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=7.1.0",
+    "responses>=0.26.3",
+]
