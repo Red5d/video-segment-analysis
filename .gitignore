@@ -34,6 +34,7 @@ out*/
 # Personal/live-run configs (config.cc26.yaml etc.) stay local; template:
 # config.example.yaml
 config.*.yaml
+!config.example.yaml
 
 # --- editors / OS ----------------------------------------------------------
 .vscode/
