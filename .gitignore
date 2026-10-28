@@ -1,14 +1,38 @@
-# Python-generated files
+# --- Python / uv -----------------------------------------------------------
 __pycache__/
 *.py[oc]
+*.egg-info/
 build/
 dist/
 wheels/
-*.egg-info
+.venv/
 
-# Virtual environments
-.venv
+# --- tooling caches --------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.prof
 
-# vsa run outputs (multi-GB media)
-out/
-*.log
+# --- vsa run outputs (multi-GB media) ---------------------------------
+# Every workdir produced by `vsa segment --out ...` (default `out/`, any
+# `outN/` from manual runs) holds audio/video downloads, segment cuts,
+# transcripts, subtitles, and slide frames. All of it is regenerable from
+# the source + manifest, and media blobs do not belong in git.
+out*/
+
+# straggler artifacts that should never be committed even if they escape
+# a workdir (e.g. --out .)
+*.partial
+*chunk_*.wav
+.*.part.*
+*.wav.tmp
+
+# --- editors / OS ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
