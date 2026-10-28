@@ -77,8 +77,8 @@ slides:
 
 vlm:
   backend: openai_compat        # openai_compat | fake
-  model: gpt-4o
-  base_url: "https://api.openai.com/v1"   # any OpenAI-compatible vision endpoint
+  model: ~z-ai/glm-flash-latest
+  base_url: "https://openrouter.ai/api/v1"   # any OpenAI-compatible vision endpoint
   api_key_env: VSA_VLM_API_KEY  # env var NAME, not the key
   image_format: jpeg
   image_quality: 85

@@ -184,20 +184,39 @@ def _process_segment(workdir: Path, seg: Segment, video: Path, cfg: Config,
 def _describe_frames(frames: list[SlideFrame], vlm, workdir: Path,
                      cfg: Config) -> None:
     """Describe pending frames concurrently; failures become placeholders."""
+    import time as _time
     from .vlm.base import SlideDescription
 
-    def _one(f: SlideFrame) -> tuple[SlideFrame, SlideDescription]:
-        path = workdir / f.frame
-        try:
-            return f, vlm.describe_checked(path)
-        except VSAError as exc:  # client-side hard failure
-            logger.warning("[slides] describe failed for %s: %s", f.frame, exc)
-            return f, SlideDescription(text="[slide content unavailable]",
-                                       failed=True)
-
     todo = [f for f in frames if f.vlm_status == "pending"]
-    with ThreadPoolExecutor(max_workers=max(1, cfg.vlm.concurrency)) as pool:
-        for frame, desc in pool.map(_one, todo):
+
+    def _one(k: int, f: SlideFrame) -> tuple[SlideFrame, SlideDescription]:
+        path = workdir / f.frame
+        label = f"[slides] frame {k + 1}/{len(todo)} ({f.frame})"
+        logger.info("%s → describing…", label)
+        t0 = _time.monotonic()
+        try:
+            desc = vlm.describe_checked(path)
+        except Exception as exc:  # noqa: BLE001 — a placeholder beats losing the segment
+            logger.warning("[slides] describe failed for %s: %s", f.frame, exc)
+            desc = SlideDescription(text="[slide content unavailable]",
+                                    failed=True)
+        took = _time.monotonic() - t0
+        if desc.failed:
+            logger.info("%s ← unavailable after %.1fs (placeholder)", label,
+                        took)
+        else:
+            logger.info("%s ← done in %.1fs (%d words)", label, took,
+                        len(desc.text.split()))
+        return f, desc
+
+    workers = max(1, cfg.vlm.concurrency)
+    if len(todo) > workers:
+        logger.info("[slides] %d frames to describe, %d at a time",
+                    len(todo), workers)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_one, k, f): f for k, f in enumerate(todo)}
+        for fut in futures:  # submission order: results stream in as ready
+            frame, desc = fut.result()
             frame.vlm_status = "vlm_failed" if desc.failed else "done"
             frame.description = desc.text
 

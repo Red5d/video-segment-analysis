@@ -221,3 +221,30 @@ def test_build_vlm_client_factory(monkeypatch):
     assert isinstance(build_vlm_client(cfg), OpenAICompatVlmClient)
     cfg.vlm.backend = "fake"
     assert isinstance(build_vlm_client(cfg), FakeVlmClient)
+
+
+def test_describe_frames_logs_and_stamps(caplog, tmp_path):
+    import time as time_mod
+    from video_segment_analysis.manifest import SlideFrame
+    from video_segment_analysis.slides_pipeline import _describe_frames
+    from video_segment_analysis.config import Config
+    from video_segment_analysis.vlm.base import SlideDescription
+
+    class SlowFakeVlm:
+        def describe_checked(self, path):
+            time_mod.sleep(0.05)
+            if "f1" in path.name:
+                # non-VSAError must degrade to the placeholder, not crash
+                raise RuntimeError("boom")
+            return SlideDescription("A slide with text")
+
+    cfg = Config()
+    frames = [SlideFrame(time=-1.0, frame="segments/seg/f0.jpg"),
+              SlideFrame(time=10.0, frame="segments/seg/f1.jpg"),
+              SlideFrame(time=20.0, frame="segments/seg/f2.jpg")]
+    _describe_frames(frames, SlowFakeVlm(), tmp_path, cfg)
+    assert frames[0].description == "A slide with text"
+    assert frames[0].vlm_status == "done"
+    assert frames[1].description == "[slide content unavailable]"
+    assert frames[1].vlm_status == "vlm_failed"
+    assert frames[2].vlm_status == "done"
