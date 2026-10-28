@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from video_segment_analysis.slide_cues import OPENING_MIN_T, build_slide_cues
+from video_segment_analysis.slide_cues import OPENING_MIN_T, _split_text, build_slide_cues
 
 
 def windows(cues) -> list[tuple[float, float]]:
@@ -137,3 +137,51 @@ def test_missing_description_skips_cue():
 def test_no_changes_opening_cue_covers_segment():
     cues = build_slide_cues([], [], 120.0, opening_description="Only a title slide")
     assert windows(cues) == pytest.approx([(0.0, 120.0)])
+
+
+def test_split_text_honours_part_count():
+    # exact part count when the text has more words than parts requested
+    text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu"
+    assert len(_split_text(text, 1)) == 1
+    assert _split_text(text, 1) == [text]
+    for n in range(2, 13):  # 12 words available
+        parts = _split_text(text, n)
+        assert len(parts) == n
+        assert all(parts)
+        assert " ".join(parts).split() == text.split()  # reading order kept
+    # fewer words than parts → one word per part
+    assert _split_text(text, 20) == text.split()
+
+
+def test_giant_tokens_terminate():
+    # Slides full of unbreakable long tokens (URLs etc.) used to send the
+    # proportional-split refinement loop into a fixed-point spin
+    # (_split_text is not monotonic in n → infinite CPU, no output).
+    text = " ".join(
+        "x" * 200 if i % 3 == 0 else w
+        for i, w in enumerate(
+            ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+             "iota", "kappa", "lambda", "mu", "nu", "xi", "omicron", "pi"] * 8
+        )
+    )
+    assert len(text.split()) == 128
+    opening = " ".join(
+        "https://ex.tld/a/b/" + str(i) if i % 4 == 0 else f"word{i}"
+        for i in range(60)
+    )
+    cues = build_slide_cues(
+        [777.0], [text], 1968.0, frame_offset=1.5, opening_slide=False,
+        opening_description=None,
+    )
+    assert len(cues) >= 2
+    assert all(778.5 <= s < e <= 1968.0 for s, e in windows(cues))
+    # with an opening description the same must hold (the original repro was
+    # a long window + long opening + slide texts full of giant tokens)
+    cues = build_slide_cues(
+        [777.0], [text], 1968.0, frame_offset=1.5,
+        opening_description=opening,
+    )
+    assert cues[0].start == pytest.approx(0.0)
+    assert all(0.0 <= s < e <= 1968.0 for s, e in windows(cues))
+    joined = " ".join(c.text for c in cues if c.start < 778.5).split()
+    assert joined == opening.split()  # opening text preserved in order

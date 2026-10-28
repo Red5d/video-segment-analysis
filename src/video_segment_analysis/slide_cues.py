@@ -13,7 +13,8 @@ Turns accepted slide-change times + VLM descriptions into the
   allocated proportionally to text length inside the slide window; cues
   never exceed the window. A split cue window longer than
   ``max_cue_duration_split`` gets enough cues to stay under that duration
-  (a single short sentence may legitimately span the whole window).
+  (a single short sentence — or an unbreakable long token such as a URL —
+  may legitimately span the whole window).
 - Text is wrapped at ``max_cue_chars`` via ``subtitles.wrap_text`` and the
   final list is passed through ``subtitles.normalize_cues`` (non-overlap,
   clamping, re-indexing).
@@ -78,22 +79,32 @@ def build_slide_cues(
         dur = end - start
         if dur <= 0:
             return
+        # Never request more parts than there are words to fill them; a part
+        # count the splitter cannot honour would make the proportional split
+        # drift (and the old refinement loop's precondition false).
         n = max(1, math.ceil(len(text) / max(1, max_cue_chars)))
         if n > 1 and dur > max_cue_duration_split:
             # enough text for several cues: keep each cue ≤ max_cue_duration_split
             n = max(n, math.ceil(dur / max_cue_duration_split))
+        n = min(n, max(1, len(text.split())))
         if min_cue_duration > 0:
             n = max(1, min(n, int(dur / min_cue_duration)))
         parts = _split_text(text, n)
-        max_parts = max(1, len(text.split()))
+        max_parts = len(text.split())
         while len(parts) > 1 and len(parts) < max_parts:
+            # grow the part count until no proportionally-long part exceeds
+            # max_cue_duration_split; _split_text returns exactly min(words, n)
+            # parts now, so this strictly progresses (the old loop could
+            # stagnate on a fixed point and spin forever).
             total = sum(len(p) for p in parts)
             longest = max(len(p) for p in parts) / total * dur
             if longest <= max_cue_duration_split + 1e-9:
                 break
             if min_cue_duration > 0 and dur / (len(parts) + 1) < min_cue_duration:
                 break
-            parts = _split_text(text, len(parts) + 1)
+            grow = math.ceil(len(parts) * longest / max_cue_duration_split)
+            n = min(max(len(parts) + 1, grow), max_parts)
+            parts = _split_text(text, n)
         total = sum(len(p) for p in parts) or 1
         pos = start
         for k, part in enumerate(parts):
@@ -126,8 +137,15 @@ def build_slide_cues(
 
 
 def _split_text(text: str, n: int) -> list[str]:
-    """Split ``text`` into ``n`` consecutive parts at word boundaries,
-    each ~``len(text)/n`` chars (parts stay in reading order)."""
+    """Split ``text`` into exactly ``n`` parts at word boundaries, each
+    ~``len(text)/n`` chars (parts stay in reading order, every part
+    non-empty).
+
+    With fewer than ``n`` words the text is split one word per part instead.
+    The count is guaranteed: closes happen while the remaining word supply
+    can still fill the parts still owed, and near the end each remaining
+    word is forced into its own part.
+    """
     if n <= 1:
         return [text]
     words = text.split()
@@ -141,8 +159,9 @@ def _split_text(text: str, n: int) -> list[str]:
         cur.append(word)
         size += len(word) + 1
         remaining_words = len(words) - i - 1
-        remaining_parts = n - len(parts) - 1
-        if size >= target and remaining_words >= remaining_parts:
+        # parts still owed after the current one closes
+        to_close = n - len(parts) - 1
+        if (size >= target and remaining_words >= to_close) or remaining_words == to_close:
             parts.append(cur)
             cur, size = [], 0
     if cur:
