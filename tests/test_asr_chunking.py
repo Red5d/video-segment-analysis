@@ -216,6 +216,8 @@ def stubbed_qwen(monkeypatch):
     torch = types.ModuleType("torch")
     for name in ("bfloat16", "float16", "float32"):
         setattr(torch, name, name)
+    torch.cuda = types.SimpleNamespace(is_available=lambda: True)  # type: ignore[attr-defined]
+    torch.version = types.SimpleNamespace(hip="7.2.0", cuda=None)  # type: ignore[attr-defined]
     qwen = types.ModuleType("qwen_asr")
     qwen.Qwen3ASRModel = StubModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "torch", torch)
@@ -283,6 +285,8 @@ def test_qwen_local_no_aligner_no_timestamps(stubbed_qwen, tmp_path: Path):
 def test_qwen_local_load_failure_raises_asr_error(monkeypatch, tmp_path: Path):
     torch = types.ModuleType("torch")
     torch.bfloat16 = "bfloat16"  # type: ignore[attr-defined]
+    torch.cuda = types.SimpleNamespace(is_available=lambda: True)  # type: ignore[attr-defined]
+    torch.version = types.SimpleNamespace(hip="7.2.0", cuda=None)  # type: ignore[attr-defined]
 
     class Boom:
         @classmethod

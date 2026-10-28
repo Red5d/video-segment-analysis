@@ -15,10 +15,19 @@ dependencies = [
     "pydantic-settings>=2.2",
     "pyyaml>=6.0",
     "qwen-asr>=0.0.1",
+    # Direct dep so tool.uv.sources (below) can pin the ROCm build — uv
+    # applies source pins only to packages declared in this manifest, and
+    # torch otherwise arrives transitively via qwen-asr as the CUDA build.
+    "torch>=2.14.1",
     "rich>=13.0",
     "tenacity>=8.2",
     "typer>=0.12",
     "yt-dlp>=2025.1",
+    # ROCm torch pulled in transitively by qwen-asr must come from the ROCm
+    # index (this machine's GPU is gfx1201 / ROCm 7.2) — see tool.uv.sources.
+    # ROCm torch requires both triton variants from the same index.
+    "pytorch-triton-rocm>=3.5.1 ; sys_platform == 'linux'",
+    "triton-rocm>=3.6.0 ; sys_platform == 'linux'",
 ]
 
 [project.scripts]
@@ -33,6 +42,19 @@ addopts = "-m 'not network'"
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+# torch enters the graph transitively via qwen-asr; source pins apply to
+# transitive deps too. ROCm wheels exist for Linux only — on any other
+# platform fall back to PyPI (CPU/CUDA builds per PyPI's own table).
+torch = [{ index = "pytorch-rocm", marker = "sys_platform == 'linux'" }]
+pytorch-triton-rocm = [{ index = "pytorch-rocm", marker = "sys_platform == 'linux'" }]
+triton-rocm = [{ index = "pytorch-rocm", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm7.2"
+explicit = true
 
 [dependency-groups]
 dev = [

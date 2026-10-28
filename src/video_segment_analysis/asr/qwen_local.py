@@ -43,6 +43,32 @@ _LOAD_GUIDANCE = (
     "    and HF cache permissions, or pre-download with `huggingface-cli download`."
 )
 
+def _preflight_device(cfg: AsrConfig) -> None:
+    """Fail fast with vendor-specific guidance when the configured device
+    cannot exist in the installed torch build (§8.2 diagnostics)."""
+    if cfg.device == "cpu":
+        return
+    import torch  # lazy: caller already imported it once
+
+    available = bool(getattr(torch, "cuda", None) and torch.cuda.is_available())
+    if available:
+        return
+    hip = getattr(getattr(torch, "version", None), "hip", None)
+    if hip:
+        hint = (
+            f"torch is the ROCm build ({hip}) but no GPU is visible — check "
+            "the amdgpu driver and user groups (render, video), or that "
+            "`rocminfo` lists your card; unsupported architectures may need "
+            "HSA_OVERRIDE_GFX_VERSION.")
+    else:
+        hint = (
+            "torch is the CUDA build but no NVIDIA driver was found — on an "
+            "AMD GPU install the ROCm torch wheels instead: the project pins "
+            "them via tool.uv.sources → pytorch-rocm index; run "
+            "`uv lock && uv sync`, then verify with "
+            '`uv run python -c "import torch; print(torch.version.hip)"`.')
+    raise ASRError(f"device error: {hint}")
+
 
 def _wav_duration(path: Path) -> float:
     with contextlib.suppress(Exception):
@@ -96,6 +122,7 @@ class QwenLocalAsrClient(AsrClient):
                 import torch
                 from qwen_asr import Qwen3ASRModel
 
+                _preflight_device(self.cfg)
                 dtype = getattr(torch, self.cfg.dtype)  # bfloat16|float16|float32
                 kwargs: dict = {
                     "dtype": dtype,
