@@ -30,6 +30,11 @@ out*/
 .*.part.*
 *.wav.tmp
 
+# --- local run configs -----------------------------------------------------
+# Personal/live-run configs (config.cc26.yaml etc.) stay local; template:
+# config.example.yaml
+config.*.yaml
+
 # --- editors / OS ----------------------------------------------------------
 .vscode/
 .idea/
