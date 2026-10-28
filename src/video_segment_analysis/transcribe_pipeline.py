@@ -203,9 +203,7 @@ def _cut_chunk_audio(workdir: Path, seg: Segment, rel: Interval, dst: Path,
     if not src.is_file():
         raise ManifestError(f"missing segment audio {src} — re-run `vsa segment`")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dst.with_suffix(".wav.tmp")
-    ffmpegio.cut_audio_wav(src, tmp, rel[0], rel[1], cfg.audio)
-    tmp.replace(dst)
+    ffmpegio.cut_audio_wav(src, dst, rel[0], rel[1], cfg.audio)  # atomic internally
 
 
 def _write_subtitles(workdir: Path, seg: Segment, plan: list[Interval],

@@ -168,6 +168,11 @@ def _probe_duration(path: Path) -> float:
 
 def _atomic_media(cmd: list[str], dst: Path) -> None:
     """Run an ffmpeg media-writing command atomically: tmp file + rename."""
+    if not dst.suffix:
+        raise MediaError(
+            f"output path has no extension for ffmpeg to infer its format "
+            f"from: {dst} — outputs must end in a standard extension "
+            f"(e.g. .wav, .mp4)")
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = dst.with_name(f".{dst.stem}.part{dst.suffix}")  # keep suffix: ffmpeg muxer by extension
     cmd = [*cmd[:-1], str(tmp)]
