@@ -103,6 +103,25 @@ uv run vsa segment --source <url> --strategy local-encode \
 Audio for ASR always comes from the single full WAV, so transcript timing
 is unaffected by video-cut drift.
 
+## AMD GPUs / ROCm
+
+`asr.device` stays `cuda:0` on AMD hardware — PyTorch's ROCm build exposes
+the GPU through the CUDA API. What matters is the wheel: this project pins
+torch (+ `triton-rocm`) to the `pytorch-rocm` index in `pyproject.toml`;
+`uv lock && uv sync` resolves the ROCm build (Linux only). Verify:
+
+```bash
+uv run python -c "import torch; print(torch.__version__, torch.version.hip, torch.cuda.is_available())"
+```
+
+Notes:
+
+- `torch.version.hip` present + `is_available()` true = ROCm wheels active.
+  The `.cuda` device preflight in the ASR loader distinguishes wrong-wheel
+  installs from driver/group problems with per-case guidance.
+- Some ROCm builds print `(null): No such file or directory` to stderr at
+  device enumeration — a known harmless HIP-runtime message, not an error.
+
 ## Development
 
 ```bash

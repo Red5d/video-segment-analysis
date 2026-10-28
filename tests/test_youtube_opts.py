@@ -72,7 +72,7 @@ def test_ydl_merges_extra_opts(src, monkeypatch):
 
     monkeypatch.setitem(__import__("sys").modules, "yt_dlp",
                         type("m", (), {"YoutubeDL": FakeYDL}))
-    with src._ydl({"format": "best"}) as ydl:
+    with src._ydl({"format": "best"}):
         pass
     assert captured["format"] == "best"
     assert captured["noplaylist"] is True  # base opts preserved

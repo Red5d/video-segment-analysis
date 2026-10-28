@@ -16,7 +16,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from .asr.base import AsrClient, Utterance
+from .asr.base import AsrClient, Utterance, Word
 from .asr.chunking import plan_chunks
 from .config import Config
 from .cues import utterances_to_cues
@@ -42,13 +42,23 @@ def _chunk_result_path(cdir: Path, idx: int) -> Path:
     return cdir / f"chunk_{idx:03d}.json"
 
 
+def _decode_utterance(d: dict) -> Utterance:
+    """aiodict (asdict-shape) → Utterance; nested `words` are dicts too."""
+    ws = d.get("words")
+    words = ([Word(str(w["text"]), float(w["start"]), float(w["end"]))
+              for w in ws]
+             if ws else None)
+    return Utterance(float(d["start"]), float(d["end"]), str(d.get("text", "")),
+                     words)
+
+
 def _load_cached(cdir: Path, idx: int) -> list[Utterance] | None:
     p = _chunk_result_path(cdir, idx)
     if not p.is_file():
         return None
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        return [Utterance(**d) for d in data]
+        return [_decode_utterance(d) for d in data]
     except Exception:
         logger.warning("chunk result cache corrupt, re-transcribing: %s", p)
         p.unlink(missing_ok=True)
@@ -117,16 +127,29 @@ def run_transcribe(cfg: Config, *, segment_ids: list[str] | None = None,
     logger.info("transcribe: %d segments, %d chunks queued", len(targets), len(jobs))
 
     # ---- transcribe chunks ---------------------------------------------------
+    def _log_chunk(seg: Segment, idx: int, rel: Interval) -> None:
+        logger.info("[asr] seg %s chunk %d/%d → cutting audio "
+                    "(%.0f–%.0f s, segment-relative)",
+                    seg.id, idx + 1, seg.asr.chunks_total, rel[0], rel[1])
+
     def _run_job(seg: Segment, idx: int, rel: Interval) -> None:
+        _log_chunk(seg, idx, rel)
         cdir = _chunk_dir(workdir, seg.id)
         wav = _chunk_audio_cached(cdir, idx)
         _cut_chunk_audio(workdir, seg, rel, wav, cfg)
+        logger.info("[asr] seg %s chunk %d/%d → transcribing (%s)",
+                    seg.id, idx + 1, seg.asr.chunks_total, cfg.asr.backend)
         utts = client.transcribe(wav, cfg.asr.language)
         _save_chunk(cdir, idx, utts)
 
     def _run_batch(batch: list[tuple[Segment, int, Interval]]) -> None:
         wavs: list[Path] = []
+        logger.info("[asr] batch of %d chunk(s) → %s (%s)",
+                    len(batch),
+                    ", ".join(s.id for s, _i, _r in batch),
+                    cfg.asr.backend)
         for seg, idx, rel in batch:
+            _log_chunk(seg, idx, rel)
             cdir = _chunk_dir(workdir, seg.id)
             wav = _chunk_audio_cached(cdir, idx)
             _cut_chunk_audio(workdir, seg, rel, wav, cfg)
@@ -136,7 +159,7 @@ def run_transcribe(cfg: Config, *, segment_ids: list[str] | None = None,
             _save_chunk(_chunk_dir(workdir, seg.id), idx, utts)
 
     def _attempt(seg: Segment, idx: int, rel: Interval, fn) -> bool:
-        prefix = f"transcribe: {seg.id} chunk {idx + 1}/{seg.asr.chunks_total}"
+        prefix = f"[asr:{seg.id}] chunk {idx + 1}/{seg.asr.chunks_total}"
         try:
             fn()
             seg.asr.chunks_done += 1
@@ -156,13 +179,17 @@ def run_transcribe(cfg: Config, *, segment_ids: list[str] | None = None,
             fn = (lambda b=batch: _run_batch(b)) if len(batch) > 1 \
                 else (lambda j=first: _run_job(*j))
             if not _attempt(first[0], first[1], first[2], fn):
-                if len(batch) == 1:
-                    failures.append(first[0].id)
-                else:
-                    for seg, idx, rel in batch:
-                        if not _attempt(seg, idx, rel,
-                                        lambda s=seg, x=idx, r=rel: _run_job(s, x, r)):
-                            failures.append(seg.id)
+                if len(batch) > 1:
+                    logger.info("[asr] re-attempting %s chunk-by-chunk to "
+                                "isolate the failure", first[0].id)
+                for seg, idx, rel in batch:
+                    if not _attempt(seg, idx, rel,
+                                    lambda s=seg, x=idx, r=rel: _run_job(s, x, r)):
+                        failures.append(seg.id)
+            elif len(batch) > 1:
+                # _run_batch saved every member's result; count them all
+                for seg, idx, _rel in batch[1:]:
+                    seg.asr.chunks_done += 1
             manifest.save(workdir)
     else:
         def _one(job):

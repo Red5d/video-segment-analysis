@@ -10,7 +10,9 @@ from video_segment_analysis import ffmpegio
 from video_segment_analysis.config import Config
 from video_segment_analysis.errors import MediaError
 from video_segment_analysis.manifest import Segment
-from video_segment_analysis.transcribe_pipeline import _cut_chunk_audio
+from video_segment_analysis.asr.base import Utterance, Word
+from video_segment_analysis.transcribe_pipeline import (
+    _chunk_result_path, _cut_chunk_audio, _load_cached, _save_chunk)
 
 CFG = Config()
 
@@ -87,3 +89,34 @@ def test_atomic_media_rejects_suffixless_dst(tmp_path, monkeypatch):
     with pytest.raises(MediaError, match="extension"):
         ffmpegio.cut_video_copy(tmp_path / "in.mp4", dst, 0, 10)
     assert not ran and not dst.exists()
+
+
+# ---------------------------------------------------------------------------
+# chunk result cache: JSON ⇄ Utterance/Word objects (nested words are dicts
+# on disk — reconstructing them as objects is what cue assembly relies on)
+
+
+def _sample_utterances():
+    return [
+        Utterance(0.0, 5.0, "hello world",
+                  [Word("hello", 0.0, 1.2), Word("world", 1.3, 2.0)]),
+        Utterance(5.0, 9.0, "no words here", None),
+    ]
+
+
+def test_chunk_cache_roundtrip(tmp_path):
+    cdir = tmp_path / "seg_001" / "asr"
+    utts = _sample_utterances()
+    _save_chunk(cdir, 0, utts)
+    got = _load_cached(cdir, 0)
+    assert got == utts
+    assert type(got[0].words[0]) is Word  # not a dict (the downstream crash)
+    assert got[1].words is None
+
+
+def test_chunk_cache_missing_corrupt(tmp_path):
+    cdir = tmp_path / "seg_001" / "asr"
+    assert _load_cached(cdir, 1) is None
+    cdir.mkdir(parents=True)
+    (_chunk_result_path(cdir, 1)).write_text("{not json", encoding="utf-8")
+    assert _load_cached(cdir, 1) is None  # corrupt → treated as missing

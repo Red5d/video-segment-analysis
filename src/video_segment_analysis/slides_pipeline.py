@@ -57,7 +57,7 @@ def run_slides(cfg: Config, *, segment_ids: list[str] | None = None,
         for seg in targets:
             seg.slides = type(seg.slides)()  # fresh SlidesInfo
 
-    vlm = None  # lazy: built on first describe need (startup key validation)
+    # vlm client: lazy, built on first describe need
     failures: list[str] = []
     for seg in targets:
         video = workdir / seg.cut.video  # type: ignore[union-attr]

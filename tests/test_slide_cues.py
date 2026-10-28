@@ -18,7 +18,7 @@ def test_cue_windows_tile_the_segment():
     assert windows(cues) == pytest.approx([(11.5, 20.0), (21.5, 30.0), (31.5, 40.0)])
     assert [c.text for c in cues] == descs
     assert [c.index for c in cues] == [1, 2, 3]
-    starts, ends = [c.start for c in cues], [c.end for c in cues]
+    starts = [c.start for c in cues]
     assert starts == sorted(starts)
     assert all(e > s for s, e in windows(cues))
     assert all(s2 >= e1 for (s1, e1), (s2, _) in zip(windows(cues), windows(cues)[1:]))
