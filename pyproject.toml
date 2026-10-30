@@ -3,6 +3,7 @@ name = "video-segment-analysis"
 version = "0.1.0"
 description = "Split long conference recordings into per-talk segments, transcribe them, and describe slide changes."
 readme = "README.md"
+license = "MIT"
 authors = [
     { name = "Red5d", email = "daniel.colson99@gmail.com" }
 ]
