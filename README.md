@@ -87,6 +87,33 @@ Key segmentation knobs (`segmentation` section):
 - `min_segment_duration` — shorter speech runs are dropped (default 120 s)
 - `pad_start` / `pad_end` — padding around speech (default 3 s / 5 s)
 
+## ASR model & VRAM
+
+The default transcription model is `Qwen/Qwen3-ASR-1.7B` (loaded in
+`bfloat16` on the GPU by `asr.backend = qwen_local`). Rough VRAM budget at
+default settings:
+
+| Component | VRAM |
+| --- | --- |
+| Qwen3-ASR-1.7B weights + activations (bf16) | ~5 GB |
+| Qwen3-ForcedAligner-0.6B (word-level timestamps) | ~1.5 GB |
+| **Total, default config** | **~6.5 GB** — an 8 GB GPU is comfortable |
+
+On smaller GPUs, swap the 0.6B transcription model and drop the aligner
+(loses word-level timestamps; SRT/VTT cues still generated from chunk
+boundaries):
+
+```yaml
+asr:
+  model: "Qwen/Qwen3-ASR-0.6B"   # ~2 GB in bf16 — fits a 4-6 GB GPU
+  aligner: null                  # saves the ~1.5 GB aligner model
+```
+
+Both models support the same 30 languages + 22 Chinese dialects; the 1.7B
+version is more accurate, the 0.6B version trades accuracy for a much
+smaller footprint. Any setting can also be overridden without a config file
+via environment: `VSA__ASR__MODEL=Qwen/Qwen3-ASR-0.6B`.
+
 ## Cutting notes (YouTube)
 
 The default `auto` strategy downloads the full video **once**, then cuts
